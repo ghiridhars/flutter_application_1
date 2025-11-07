@@ -4,19 +4,45 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  void _toggleTheme() {
+    setState(() {
+      _themeMode = _themeMode == ThemeMode.light 
+          ? ThemeMode.dark 
+          : ThemeMode.light;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Todo List App',
       debugShowCheckedModeBanner: false,
+      themeMode: _themeMode,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
       ),
-      home: const TodoListPage(),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      home: TodoListPage(onThemeToggle: _toggleTheme, themeMode: _themeMode),
     );
   }
 }
@@ -52,7 +78,14 @@ enum TodoCategory {
 }
 
 class TodoListPage extends StatefulWidget {
-  const TodoListPage({super.key});
+  final VoidCallback onThemeToggle;
+  final ThemeMode themeMode;
+  
+  const TodoListPage({
+    super.key,
+    required this.onThemeToggle,
+    required this.themeMode,
+  });
 
   @override
   State<TodoListPage> createState() => _TodoListPageState();
@@ -84,6 +117,97 @@ class _TodoListPageState extends State<TodoListPage> {
       ));
       _textController.clear();
     });
+  }
+
+  // Edit an existing todo
+  void _editTodo(int index) {
+    final todo = _todos[index];
+    final TextEditingController editController = TextEditingController(text: todo.title);
+    String editCategory = todo.category;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Todo'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: editController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Task',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      prefixIcon: Icon(
+                        _getCategoryIcon(editCategory),
+                        color: _getCategoryColor(editCategory),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Category:', style: TextStyle(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: TodoCategory.values.map((category) {
+                      final isSelected = editCategory == category.label;
+                      return ChoiceChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              category.icon,
+                              size: 16,
+                              color: isSelected ? Colors.white : category.color,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(category.label),
+                          ],
+                        ),
+                        selected: isSelected,
+                        selectedColor: category.color,
+                        onSelected: (selected) {
+                          setDialogState(() {
+                            editCategory = category.label;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    editController.dispose();
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (editController.text.trim().isNotEmpty) {
+                      setState(() {
+                        _todos[index].title = editController.text.trim();
+                        _todos[index].category = editCategory;
+                      });
+                      editController.dispose();
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   // Toggle todo completion status
@@ -166,6 +290,17 @@ class _TodoListPageState extends State<TodoListPage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('My Todo List'),
         elevation: 2,
+        actions: [
+          IconButton(
+            icon: Icon(
+              widget.themeMode == ThemeMode.light 
+                ? Icons.dark_mode 
+                : Icons.light_mode,
+            ),
+            onPressed: widget.onThemeToggle,
+            tooltip: 'Toggle theme',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -352,7 +487,7 @@ class _TodoListPageState extends State<TodoListPage> {
                           child: ListTile(
                             leading: Container(
                               decoration: BoxDecoration(
-                                color: _getCategoryColor(todo.category).withOpacity(0.2),
+                                color: _getCategoryColor(todo.category).withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               padding: const EdgeInsets.all(8),
@@ -408,10 +543,10 @@ class _TodoListPageState extends State<TodoListPage> {
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: _getCategoryColor(todo.category).withOpacity(0.1),
+                                      color: _getCategoryColor(todo.category).withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: _getCategoryColor(todo.category).withOpacity(0.3),
+                                        color: _getCategoryColor(todo.category).withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Text(
@@ -426,10 +561,22 @@ class _TodoListPageState extends State<TodoListPage> {
                                 ],
                               ),
                             ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              color: Colors.red,
-                              onPressed: () => _deleteTodo(originalIndex),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  color: Theme.of(context).colorScheme.primary,
+                                  onPressed: () => _editTodo(originalIndex),
+                                  tooltip: 'Edit',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  color: Colors.red,
+                                  onPressed: () => _deleteTodo(originalIndex),
+                                  tooltip: 'Delete',
+                                ),
+                              ],
                             ),
                           ),
                         ),
